@@ -120,12 +120,6 @@ def select_bezier_landmarks(image_path, shape_name=None):
             ax.add_patch(circle)
             circles.append(circle)
             
-            # Add text label with point number
-            text_label = ax.text(x + 10, y + 10, str(len(control_points)), 
-                               color='blue', fontsize=10, fontweight='bold',
-                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
-            circles.append(text_label)  # Store text as well for removal
-            
             # Update curve
             update_curve()
             
@@ -136,13 +130,8 @@ def select_bezier_landmarks(image_path, shape_name=None):
             if control_points:
                 removed_point = control_points.pop()
                 
-                # Remove the last two items (circle and text)
-                if len(circles) >= 2:
-                    circles[-1].remove()
-                    circles.pop()
-                    circles[-1].remove()
-                    circles.pop()
-                elif len(circles) == 1:
+                # Remove the last circle
+                if circles:
                     circles[-1].remove()
                     circles.pop()
                 
@@ -698,12 +687,15 @@ def measure_shape_area(image_path, shape_name=None, output_dir=None):
     return result
 
 
-def all_shapes(image_dir_path):
+def all_shapes(image_dir_path, num_shapes=1, shape_names=None):
     """
     Process all image files in a directory, allowing user to measure shapes on each image.
     
     Args:
         image_dir_path (str): Path to directory containing image files
+        num_shapes (int): Number of shapes to measure per image (default: 1)
+        shape_names (list, optional): List of shape names. If None or shorter than num_shapes,
+                                     default names (shape_1, shape_2, etc.) will be used.
         
     Returns:
         pandas.DataFrame: Combined DataFrame with all bezier curve data
@@ -718,7 +710,8 @@ def all_shapes(image_dir_path):
         raise ValueError(f"Directory does not exist: {image_dir_path}")
     
     image_files = [f for f in image_dir.iterdir() 
-                   if f.is_file() and f.suffix in image_extensions]
+                   if f.is_file() and f.suffix in image_extensions 
+                   and not f.stem.endswith('_traced')]
     
     # Sort for consistent processing order
     image_files.sort()
@@ -741,32 +734,20 @@ def all_shapes(image_dir_path):
         if cancelled:
             break
             
-        # Ask how many shapes to measure
-        try:
-            num_shapes = int(input(f'How many shapes do you want to measure in {image_path.name}? (Press Ctrl+C to cancel): '))
-            if num_shapes < 1:
-                num_shapes = 1
-        except ValueError:
+        # Ensure num_shapes is at least 1
+        if num_shapes < 1:
             num_shapes = 1
-        except KeyboardInterrupt:
-            cancelled = True
-            break
         
-        # Prompt for all shape names before collecting control points
-        shape_names = []
-        try:
-            for shape_idx in range(1, num_shapes + 1):
-                try:
-                    shape_name = input(f'Enter a name for shape {shape_idx} (or press Enter for default): ').strip()
-                    if not shape_name:
-                        shape_name = f'shape_{shape_idx}'
-                    shape_names.append(shape_name)
-                except ValueError:
-                    shape_name = f'shape_{shape_idx}'
-                    shape_names.append(shape_name)
-        except KeyboardInterrupt:
-            cancelled = True
-            break
+        # Use provided shape names or generate default names
+        if shape_names is None:
+            shape_names = []
+        # Ensure we have enough shape names (pad with defaults if needed)
+        current_shape_names = []
+        for shape_idx in range(1, num_shapes + 1):
+            if shape_idx <= len(shape_names):
+                current_shape_names.append(shape_names[shape_idx - 1])
+            else:
+                current_shape_names.append(f'shape_{shape_idx}')
         
         # Process each shape
         result = None
@@ -775,7 +756,7 @@ def all_shapes(image_dir_path):
             if cancelled:
                 break
                 
-            shape_name = shape_names[shape_idx - 1]
+            shape_name = current_shape_names[shape_idx - 1]
             
             # Measure the shape
             result = measure_shape_area(str(image_path), shape_name=shape_name, 
